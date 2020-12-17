@@ -1,5 +1,5 @@
 [package]
-name = "sapling"
+name = "sapling-tools"
 version = "0.1.0"
 authors = ["Tadeas Kmenta <tadeas.kmenta@zel.cash>"]
 edition = "2018"
