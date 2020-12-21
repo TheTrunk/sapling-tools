@@ -1,6 +1,6 @@
 [package]
 name = "sapling-tools"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Tadeas Kmenta <tadeas.kmenta@zel.cash>"]
 edition = "2018"
 
@@ -8,16 +8,17 @@ edition = "2018"
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["console_error_panic_hook"]
+default = ["console_error_panic_hook", "embed_params"]
+embed_params = []
 
 [dependencies]
-wasm-bindgen = "0.2.63"
-
-hex = "0.3"
-bech32 = "0.6"
-zcash_primitives = {  git = "https://github.com/zcash/librustzcash", rev = "c289cf9d4b46d330c265006e5f796543f2744fe5" }
+wasm-bindgen = "0.2.69"
+hex = "0.4.2"
+zcash_primitives = {  git = "https://github.com/zcash/librustzcash", rev = "c289cf9d4b46d330c265006e5f796543f2744fe5", features=["transparent-inputs"] }
 zcash_client_backend = {  git = "https://github.com/zcash/librustzcash", rev = "c289cf9d4b46d330c265006e5f796543f2744fe5" }
-json = "0.11.14"    
+zcash_proofs = {  git = "https://github.com/zcash/librustzcash", rev = "c289cf9d4b46d330c265006e5f796543f2744fe5" }
+json = "0.12.4"
+secp256k1 = "0.19.0"
 
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires
@@ -33,7 +34,7 @@ console_error_panic_hook = { version = "0.1.6", optional = true }
 wee_alloc = { version = "0.4.5", optional = true }
 
 [dev-dependencies]
-wasm-bindgen-test = "0.3.13"
+wasm-bindgen-test = "0.3.19"
 
 [profile.release]
 # Tell `rustc` to optimize for small code size.
