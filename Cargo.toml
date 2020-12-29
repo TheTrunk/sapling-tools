@@ -1,6 +1,6 @@
 [package]
 name = "sapling-tools"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Tadeas Kmenta <tadeas.kmenta@zel.cash>"]
 edition = "2018"
 
@@ -12,7 +12,8 @@ default = ["console_error_panic_hook", "embed_params"]
 embed_params = []
 
 [dependencies]
-wasm-bindgen = "0.2.69"
+serde = { version = "1.0", features = ["derive"] }
+wasm-bindgen = { version = "0.2.69", features = ["serde-serialize"] }
 hex = "0.4.2"
 zcash_primitives = {  git = "https://github.com/zcash/librustzcash", rev = "c289cf9d4b46d330c265006e5f796543f2744fe5", features=["transparent-inputs"] }
 zcash_client_backend = {  git = "https://github.com/zcash/librustzcash", rev = "c289cf9d4b46d330c265006e5f796543f2744fe5" }
@@ -41,4 +42,5 @@ wasm-bindgen-test = "0.3.19"
 opt-level = "s"
 
 [package.metadata.wasm-pack.profile.release]
-wasm-opt = ["-Os", "--enable-mutable-globals"]
+# wasm-opt = ["-Os", "--enable-mutable-globals"]
+wasm-opt = false

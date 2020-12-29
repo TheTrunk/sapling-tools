@@ -16,6 +16,7 @@ use zcash_primitives::{
 };
 use zcash_proofs::prover::LocalTxProver;
 extern crate hex;
+extern crate console_error_panic_hook;
 use hex::FromHex;
 use secp256k1::key::SecretKey;
 
@@ -24,6 +25,48 @@ use secp256k1::key::SecretKey;
 #[cfg(feature = "wee_alloc")]
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
+
+use serde::{Serialize, Deserialize};
+
+#[derive(Serialize, Deserialize)]
+pub struct TransparentUtxos {
+    pub private_key: String,
+    pub utxo: String,
+    pub vout_index: u32,
+    pub amount: u64,
+    pub script: String,
+}
+
+impl TransparentUtxos {
+    pub fn new(private_key: String, utxo: String, vout_index: u32, amount: u64, script: String) -> Self {
+        Self { private_key, utxo, vout_index, amount, script }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct TransparentRecipients {
+    pub address: String,
+    pub amount: u64,
+}
+
+impl TransparentRecipients {
+    pub fn new(address: String, amount: u64, ) -> Self {
+        Self { address, amount }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct SaplingRecipients {
+    pub view_key: String,
+    pub address: String,
+    pub amount: u64
+}
+
+impl SaplingRecipients {
+    pub fn new(view_key: String, address: String, amount: u64, ) -> Self {
+        Self { view_key, address, amount }
+    }
+}
 
 fn generate_zaddr(
     seed: &[u8],
@@ -90,11 +133,13 @@ pub const HRP_SAPLING_EXTENDED_FULL_VIEWING_KEY: &str = "zxviews";
 // utxo array, recipient array, height, network, fee (not possible)
 // utxo has private key unlocking it, txid, voutindex, amount, script
 pub fn complex_send(
-    transparent_utxos: Vec<(&str, &str, u32, u64, &str)>,
-    transparent_recipients: Vec<(&str, u64)>,
-    sapling_recipients: Vec<(&str, &str, u64)>,
+    transparent_utxos: Vec<TransparentUtxos>,
+    transparent_recipients: Vec<TransparentRecipients>,
+    sapling_recipients: Vec<SaplingRecipients>,
     height: u32,
-    coin: &str,
+    coin: String,
+    sapling_spend: String,
+    sapling_output: String,
 ) -> String {
     let mut pubkey_prefix: [u8; 2] = [0x1c, 0xb8];
     let mut script_prefix: [u8; 2] = [0x1c, 0xbd];
@@ -117,25 +162,25 @@ pub fn complex_send(
     }
 
     let tx_prover = LocalTxProver::new(
-        Path::new("C:/Users/User/AppData/Roaming/ZcashParams/sapling-spend.params"),
-        Path::new("C:/Users/User/AppData/Roaming/ZcashParams/sapling-output.params"),
+        Path::new(&sapling_spend),
+        Path::new(&sapling_output),
     );
 
     let mut builder = Builder::new(MAIN_NETWORK.clone(), BlockHeight::from_u32(height));
 
-    for (private_key, utxo, vout_index, amount, script) in transparent_utxos {
-        let priv_key_array = Vec::from_hex(private_key).expect("Decoding failed");
+    for utxo in transparent_utxos { // (private_key, utxo, vout_index, amount, script)
+        let priv_key_array = Vec::from_hex(utxo.private_key).expect("Decoding failed");
         let non_wallet_sk = SecretKey::from_slice(priv_key_array.as_slice()).unwrap();
         // let secp = Secp256k1::new();
         // let non_wallet_pk = PublicKey::from_secret_key(&secp, &non_wallet_sk);
 
-        let mut txid: [u8; 32] = <[u8; 32]>::from_hex(utxo).expect("Decoding failed");
+        let mut txid: [u8; 32] = <[u8; 32]>::from_hex(utxo.utxo).expect("Decoding failed");
         txid.reverse();
-        let outpoint = OutPoint::new(txid, vout_index);
-        let utxo_script_vec = Vec::from_hex(script).expect("Decoding failed");
+        let outpoint = OutPoint::new(txid, utxo.vout_index);
+        let utxo_script_vec = Vec::from_hex(utxo.script).expect("Decoding failed");
 
         let coin = TxOut {
-            value: Amount::from_u64(amount).unwrap(),
+            value: Amount::from_u64(utxo.amount).unwrap(),
             script_pubkey: Script { 0: utxo_script_vec },
         };
         builder
@@ -143,9 +188,9 @@ pub fn complex_send(
             .expect("Input error");
     }
 
-    for (address, amount) in transparent_recipients {
+    for t_recipient in transparent_recipients {
         let public_key_hash =
-            match decode_transparent_address(&pubkey_prefix, &script_prefix, address) {
+            match decode_transparent_address(&pubkey_prefix, &script_prefix, &t_recipient.address) {
                 Ok(public_key_hash) => public_key_hash.unwrap(),
                 Err(e) => {
                     let e = format!("Error decoding address: {:?}", e);
@@ -153,12 +198,12 @@ pub fn complex_send(
                 }
             };
         builder
-            .add_transparent_output(&public_key_hash, Amount::from_u64(amount).unwrap())
+            .add_transparent_output(&public_key_hash, Amount::from_u64(t_recipient.amount).unwrap())
             .expect("Transparent Output error");
     }
 
-    for (view_key, address, amount) in sapling_recipients {
-        let decoded_vk = match decode_extended_full_viewing_key(hrp_view, &view_key) {
+    for s_recipient in sapling_recipients {
+        let decoded_vk = match decode_extended_full_viewing_key(hrp_view, &s_recipient.view_key) {
             Ok(decoded_vk) => decoded_vk.unwrap(),
             Err(e) => {
                 let e = format!("Error decoding extended full viewing key: {:?}", e);
@@ -167,7 +212,7 @@ pub fn complex_send(
         };
         let ovk = decoded_vk.fvk.ovk;
 
-        let sapling_addr = match decode_payment_address(&hrp_address, address) {
+        let sapling_addr = match decode_payment_address(&hrp_address, &s_recipient.address) {
             Ok(sapling_addr) => sapling_addr.unwrap(),
             Err(e) => {
                 let e = format!("Error decoding sapling address: {:?}", e);
@@ -179,7 +224,7 @@ pub fn complex_send(
             .add_sapling_output(
                 Some(ovk),
                 sapling_addr,
-                Amount::from_u64(amount).unwrap(),
+                Amount::from_u64(s_recipient.amount).unwrap(),
                 None,
             )
             .expect("Sapling Output error");
@@ -205,4 +250,30 @@ pub fn complex_send(
     let result = hex::encode(raw_tx);
 
     return result;
+}
+
+#[wasm_bindgen]
+pub fn send(
+    transparent_utxos: &JsValue,
+    transparent_recipients: &JsValue,
+    sapling_recipients: &JsValue,
+    height: u32,
+    coin: String,
+    sapling_spend: String,
+    sapling_output: String,
+) -> String {
+    console_error_panic_hook::set_once();
+    let t_utxos: Vec<TransparentUtxos> = transparent_utxos.into_serde().unwrap();
+    let t_recipients: Vec<TransparentRecipients> = transparent_recipients.into_serde().unwrap();
+    let s_recipients: Vec<SaplingRecipients> = sapling_recipients.into_serde().unwrap();
+    let tx = complex_send(
+        t_utxos,
+        t_recipients,
+        s_recipients,
+        height,
+        coin,
+        sapling_spend,
+        sapling_output,
+    );
+    return tx;
 }
