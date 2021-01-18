@@ -1,5 +1,9 @@
 use json::object;
-use std::path::Path;
+use js_sys::Object;
+use js_sys::{ArrayBuffer, Uint8Array};
+use wasm_bindgen::JsCast;
+// use std::fs::File;
+// use std::io::BufReader;
 use wasm_bindgen::prelude::*;
 use zcash_client_backend::encoding::{
     decode_extended_full_viewing_key, decode_payment_address, decode_transparent_address,
@@ -138,8 +142,8 @@ pub fn complex_send(
     sapling_recipients: Vec<SaplingRecipients>,
     height: u32,
     coin: String,
-    sapling_spend: String,
-    sapling_output: String,
+    sapling_spend: Vec<u8>,
+    sapling_output: Vec<u8>,
 ) -> String {
     let mut pubkey_prefix: [u8; 2] = [0x1c, 0xb8];
     let mut script_prefix: [u8; 2] = [0x1c, 0xbd];
@@ -161,9 +165,20 @@ pub fn complex_send(
         hrp_view = "zxviewa";
     }
 
-    let tx_prover = LocalTxProver::new(
-        Path::new(&sapling_spend),
-        Path::new(&sapling_output),
+    // let mut sapling_output_file = File::open(&sapling_spend).expect("couldn't load Sapling spend parameters file");
+    // let mut sapling_spend_file = File::open(&sapling_output).expect("couldn't load Sapling output parameters file");
+
+    // let metadata_output = std::fs::metadata(&sapling_output).expect("unable to read metadata");
+    // let mut sapling_output_vec: Vec<u8> = vec![0; metadata_output.len() as usize];
+    // sapling_output_file.read(&mut sapling_output_vec).expect("buffer overflow");
+
+    // let metadata_spend = std::fs::metadata(&sapling_spend).expect("unable to read metadata");
+    // let mut sapling_spend_vec: Vec<u8> = vec![0; metadata_spend.len() as usize];
+    // sapling_spend_file.read(&mut sapling_spend_vec).expect("buffer overflow");
+
+    let tx_prover = LocalTxProver::from_bytes(
+        &sapling_spend,
+        &sapling_output,
     );
 
     let mut builder = Builder::new(MAIN_NETWORK.clone(), BlockHeight::from_u32(height));
@@ -252,6 +267,27 @@ pub fn complex_send(
     return result;
 }
 
+// This defines the Node.js Buffer type
+#[wasm_bindgen]
+extern "C" {
+    type Buffer;
+
+    #[wasm_bindgen(method, getter)]
+    fn buffer(this: &Buffer) -> ArrayBuffer;
+
+    #[wasm_bindgen(method, getter, js_name = byteOffset)]
+    fn byte_offset(this: &Buffer) -> u32;
+
+    #[wasm_bindgen(method, getter)]
+    fn length(this: &Buffer) -> u32;
+}
+
+#[wasm_bindgen(module = "fs")]
+extern "C" {
+    #[wasm_bindgen(js_name = readFileSync)]
+    fn read_file_sync(path: &str, options: &Object) -> JsValue;
+}
+
 #[wasm_bindgen]
 pub fn send(
     transparent_utxos: &JsValue,
@@ -262,18 +298,32 @@ pub fn send(
     sapling_spend: String,
     sapling_output: String,
 ) -> String {
-    console_error_panic_hook::set_once();
-    let t_utxos: Vec<TransparentUtxos> = transparent_utxos.into_serde().unwrap();
-    let t_recipients: Vec<TransparentRecipients> = transparent_recipients.into_serde().unwrap();
-    let s_recipients: Vec<SaplingRecipients> = sapling_recipients.into_serde().unwrap();
-    let tx = complex_send(
-        t_utxos,
-        t_recipients,
-        s_recipients,
-        height,
-        coin,
-        sapling_spend,
-        sapling_output,
-    );
-    return tx;
+    unsafe {
+        console_error_panic_hook::set_once();
+        let t_utxos: Vec<TransparentUtxos> = transparent_utxos.into_serde().unwrap();
+        let t_recipients: Vec<TransparentRecipients> = transparent_recipients.into_serde().unwrap();
+        let s_recipients: Vec<SaplingRecipients> = sapling_recipients.into_serde().unwrap();
+        let spend: Buffer = read_file_sync(&sapling_spend,&Object::new()).unchecked_into();
+        let output: Buffer = read_file_sync(&sapling_output,&Object::new()).unchecked_into();
+        let spend_correct: Vec<u8> = Uint8Array::new_with_byte_offset_and_length(
+            &spend.buffer(),
+            spend.byte_offset(),
+            spend.length(),
+        ).to_vec();
+        let out_correct: Vec<u8> = Uint8Array::new_with_byte_offset_and_length(
+            &output.buffer(),
+            output.byte_offset(),
+                output.length(),
+        ).to_vec();
+        let tx = complex_send(
+            t_utxos,
+            t_recipients,
+            s_recipients,
+            height,
+            coin,
+            spend_correct,
+            out_correct,
+        );
+        return tx;
+    }
 }

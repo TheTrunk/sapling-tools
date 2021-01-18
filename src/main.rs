@@ -11,6 +11,8 @@ pub fn main() {
     // let sapling_output: String = "C:/Users/User/AppData/Roaming/ZcashParams/sapling-output.params".to_string();
     let sapling_spend: String = "/home/thetrunk/.zcash-params/sapling-spend.params".to_string();
     let sapling_output: String = "/home/thetrunk/.zcash-params/sapling-output.params".to_string();
-    let x = lib::complex_send(utxos, recipients, sapling_recipients, 756504, "zel".to_string(), sapling_spend, sapling_output); 
+    let sapling_spend_vec = std::fs::read(sapling_spend).expect("Couldn't load Sapling spend parameters file");
+    let sapling_output_vec = std::fs::read(sapling_output).expect("Couldn't load Sapling output parameters file");
+    let x = lib::complex_send(utxos, recipients, sapling_recipients, 756504, "zel".to_string(), sapling_spend_vec, sapling_output_vec); 
     println!("{:?}", x);
-} 
+}
